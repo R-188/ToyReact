@@ -4,17 +4,36 @@ class ElementWrapper {
     }
   
     setAttribute(name, value) {
+      if (name.match(/^on([\s\S]+)$/)) {
+        const eventName = RegExp.$1.replace(/^[\s\S]/, (v) => v.toLowerCase())
+        this.root.addEventListener(eventName, value)
+      }
+  
+      if (name === 'className') {
+        name = 'class'
+      }
+  
       this.root.setAttribute(name, value)
     }
   
     appendChild(vchild) {
-      console.log('ElementWrapper---appendChild', this.root)
-      vchild.mountTo(this.root)
+
+      let range = document.createRange()
+      if (this.root.children.length) {
+        range.setStartAfter(this.root.lastChild)
+        range.setEndAfter(this.root.lastChild)
+      } else {
+        range.setStart(this.root, 0)
+        range.setEnd(this.root, 0)
+      }
+  
+      vchild.mountTo(range)
     }
   
-    mountTo(parent) {
-      console.log('ElementWrapper---mountTo', this.root)
-      parent.appendChild(this.root)
+    mountTo(range) {
+      range.deleteContents()
+      range.insertNode(this.root)
+
     }
   }
   
@@ -23,37 +42,70 @@ class ElementWrapper {
       this.root = document.createTextNode(content)
     }
   
-    mountTo(parent) {
-      console.log('TextWrapper---mountTo', this.root)
-      parent.appendChild(this.root)
+    mountTo(range) {
+      range.deleteContents()
+      range.insertNode(this.root)
+
     }
   }
   
   export class Component {
     constructor() {
       this.children = []
+      this.props = Object.create(null)
     }
   
     setAttribute(name, value) {
-      console.log('Component---setAttribute', this)
       this[name] = value
+      this.props[name] = value
     }
   
     appendChild(vchild) {
-      console.log('Component---appendChild', this)
       this.children.push(vchild)
     }
   
-    mountTo(parent) {
-      let vdom = this.render()
-      vdom.mountTo(parent)
-      console.log('Component---mountTo', vdom)
+    mountTo(range) {
+      this.range = range
+      this.update()
+    }
+  
+    update() {
+      let placeholder = document.createComment('placeholder')
+      let range = document.createRange()
+      range.setStart(this.range.endContainer, this.range.endOffset)
+      range.setEnd(this.range.endContainer, this.range.endOffset)
+      range.insertNode(placeholder)
+  
+      this.range.deleteContents()
+      const vdom = this.render()
+      vdom.mountTo(this.range)
+    }
+  
+    setState(state) {
+      const merge = (oldState, newState) => {
+        for (let p in newState) {
+          if (typeof newState[p] === 'object') {
+            if (typeof oldState[p] !== 'object') {
+              oldState[p] = {}
+            }
+            merge(oldState, newState)
+          } else {
+            oldState[p] = newState[p]
+          }
+        }
+      }
+  
+      if (!this.state && state) {
+        this.state = {}
+      }
+  
+      merge(this.state, state)
+      this.update()
     }
   }
   
   export let ToyReact = {
     createElement(type, attributes, ...children) {
-      console.log(type, children)
       let element
       if (typeof type === 'string') {
         element = new ElementWrapper(type)
@@ -92,6 +144,15 @@ class ElementWrapper {
     },
   
     render(vdom, element) {
-      vdom.mountTo(element)
+      let range = document.createRange()
+      if (element.children.length) {
+        range.setStartAfter(element.lastChild)
+        range.setEndAfter(element.lastChild)
+      } else {
+        range.setStart(element, 0)
+        range.setEnd(element, 0)
+      }
+  
+      vdom.mountTo(range)
     },
   }
